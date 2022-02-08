@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="id=edge">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css" integrity="sha384-MCw98/SFnGE8fJT3GXwEOngsV7Zt27NXFoaoApmYm81iuXoPkFOJwJ8ERdknLPMO" crossorigin="anonymous">
+
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.3/umd/popper.min.js" integrity="sha384-ZMP7rVo3mIykV+2+9J3UJ46jBk0WLaUAdn689aCwoqbBJiSnjAK/l8WvCWPIPm49" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/notie/4.3.1/notie.min.js" integrity="sha512-NHRCwRf2LnVSlLDejCA9oS3fG3/FLSQIPCjAWl3M7tVi5wszwr6FxkjotWnQDXLE+aLKcxRrzFDNEgXj9nvkPw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/js/bootstrap.min.js" integrity="sha384-ChfqqxuZUCnJSK3+MXmPNIyE6ZbWh2IMqE241rYiqJxyMiZ6OW/JmZQ5stwEULTy" crossorigin="anonymous"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/notie/4.3.1/notie.min.css" integrity="sha512-UrjLcAek5jbj1vwGbXkviPHtgSNVNQCedX7cBIMDdSI2iZtUcZcoTh2Sqc8R9mVcijOjFUi1IlxhfrE1uWaIog==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <script src="/static/reconnecting-websocket.min.js"></script>
+
+    <style>
+    .chatbox {
+        outline: 1px solid silver;
+        min-height: 160px;
+        padding: 0.5em;  
+    }
+    </style>
+
+<title>Home</title>
+
+</head>
+<body>
+    <div class="container">
+        <div class="row">
+            <div class="col">
+                <h1 class="mt-3">This is the home page</h1>
+                <hr>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-8">
+                <h3>Chat</h3>
+                <p><a href="https://github.com">Go to github</a></p>
+
+                <div class="form-group">
+                    <label for="username">Username:</label>
+                    <input type="text" name="username" id="username" class="form-control" autocomplete="off">
+                </div>
+
+                <div class="form-group">
+                    <label for="message">Message:</label>
+                    <input type="text" name="message" id="message" class="form-control" autocomplete="off">
+                </div>
+
+                <hr>
+                <a href="javascript:void(0);" class="btn btn-outline-secondary" id="sendBtn">Send message</a>
+
+                <input type="hidden" name="action" id="action">
+
+                <div id="status" class="mt-2 float-end">
+                </div>
+
+                <div id="output" class="chatbox">
+                    
+                </div>
+            </div>
+            <div class="col-md-4">
+                <h3>Who's online</h3>
+
+                <ul id="online_users">
+
+                </ul>
+            </div>
+        </div>
+    </div>
+</body>
+
+    <script>
+        let socket = null;
+        let o = document.getElementById("output")
+        let userField = document.getElementById("username")
+        let messageField = document.getElementById("message")
+
+        window.onbeforeunload = function() {
+            console.log("leaving")
+
+            let jsonData = {}
+
+            jsonData["action"] = "left";
+            socket.send(JSON.stringify(jsonData))
+        }
+
+        document.addEventListener("DOMContentLoaded", function() {
+            socket = new ReconnectingWebSocket("ws://127.0.0.1:8080/ws", null, {
+                debug: true,
+                reconnectInterval: 3000
+            });
+
+            const offline = `<span class="badge bg-danger">Not connected</span>`
+            const online = `<span class="badge bg-success">Connected</span>`
+            let statusDiv = document.getElementById("status");
+
+            socket.onopen = () => {
+                console.log("Successfully connected");
+                statusDiv.innerHTML = online;
+            }
+
+            socket.onclose = () => {
+                console.log("Connection closed")
+                statusDiv.innerHTML = offline;
+            }
+
+            socket.onerror = error => {
+                console.log("There was an error")
+                statusDiv.innerHTML = offline;
+            }
+
+            socket.onmessage = msg => {
+                let data = JSON.parse(msg.data)
+                switch (data.action) {
+                    case "list_users":
+                        let ul = document.getElementById("online_users")
+                        while (ul.firstChild) ul.removeChild(ul.firstChild)
+
+                        if (data.connected_users.length > 0) {
+
+                            data.connected_users.forEach(function(item) {
+                                let li = document.createElement("li")
+                                li.appendChild(document.createTextNode(item))
+                                ul.appendChild(li)
+                            })
+
+                        }
+
+                        break;
+
+                    case "broadcast": 
+                        o.innerHTML = o.innerHTML + data.message + "<br>"
+                        break;
+                }
+
+            }
+
+            userField.addEventListener("change", function() {
+                let jsonData = {};
+                jsonData["action"] = "username"
+                jsonData["username"] = this.value;
+                socket.send(JSON.stringify(jsonData))
+            })
+
+            messageField.addEventListener("keydown", function() {
+                if (event.code === "Enter") {
+                    if(!socket) {
+                        console.log("No connection");
+                        return false
+                    }
+
+                    if ((userField.value === "") || (messageField.value === "")) {
+                        errorMessage("Fill out user and message")
+                        return false
+                    } else {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        sendMessage();
+                    }
+                }
+            })
+
+            document.getElementById("sendBtn").addEventListener("click", function() {
+                if ((userField.value === "") || (messageField.value === "")) {
+                    errorMessage("Fill out user and message")
+                    return false
+                } else {
+                    sendMessage()
+                }
+            })
+        })
+
+        function sendMessage() {
+            let jsonData = {};
+
+            jsonData["action"] = "broadcast"
+            jsonData["username"] = userField.value
+            jsonData["message"] = messageField.value
+            socket.send(JSON.stringify(jsonData))
+            messageField.value = "";
+        }
+
+        function errorMessage(msg) {
+            notie.alert({
+              type: 'error', // optional, default = 4, enum: [1, 2, 3, 4, 5, 'success', 'warning', 'error', 'info', 'neutral']
+              text: msg,
+            })
+        }
+    </script>
+</html>
